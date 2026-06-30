@@ -577,13 +577,7 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_btns, pattern="^adm"))
     app.add_handler(conv_handler)
     
-    loop = asyncio.get_event_loop()
-    loop.create_task(start_web_server())
-    loop.create_task(start_all_workers())
-    
-    logger.info("🔥 Arena Platform is Live!")
-    app.run_polling()
-     # Naya aur safe asyncio method
+    # Naya aur safe asyncio method
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
