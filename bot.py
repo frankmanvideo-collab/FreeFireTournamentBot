@@ -453,13 +453,14 @@ async def admin_btns(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.table("users").update({"locked_balance": user['locked_balance'] - amt, "winning_balance": user['winning_balance'] + amt}).eq("user_id", user_id).execute()
         await query.message.edit_caption(caption="❌ REJECTED. Funds Unlocked.")
         
-    elif action == "admprize":
+        elif action == "admprize":
         user_id, match_id = int(data[1]), data[2]
         db.table("users").update({"winning_balance": get_user(user_id)['winning_balance'] + PRIZE_MONEY}).eq("user_id", user_id).execute()
         db.table("user_matches").update({"status": "WON"}).eq("user_id", user_id).eq("match_id", match_id).execute()
         await context.bot.send_message(chat_id=user_id, text=f"🏆 **BOOYAH!** Payout verified! ₹{PRIZE_MONEY} added to Winnings!", parse_mode='Markdown')
         await query.message.edit_caption(caption="✅ PAYOUT DONE")
-                CHANNEL_ID = os.getenv("CHANNEL_ID")
+        
+        CHANNEL_ID = os.getenv("CHANNEL_ID")
         if CHANNEL_ID:
             blast_msg = f"🏆 **BOOYAH!** 🏆\n\n🎉 Player **{get_user(user_id)['ff_ign']}** just won Match #{match_id} and cashed out **₹{PRIZE_MONEY}**!\n\n💸 Khelo aur Jeeto! Start the bot now!"
             await context.bot.send_message(chat_id=CHANNEL_ID, text=blast_msg, parse_mode='Markdown')
