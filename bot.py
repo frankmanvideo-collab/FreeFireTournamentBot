@@ -583,6 +583,18 @@ def main():
     
     logger.info("🔥 Arena Platform is Live!")
     app.run_polling()
+     # Naya aur safe asyncio method
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+    loop.create_task(start_web_server())
+    loop.create_task(start_all_workers())
+    
+    logger.info("🔥 Arena Platform is Live!")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
