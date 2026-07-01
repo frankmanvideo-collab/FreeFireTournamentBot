@@ -506,7 +506,11 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_btns, pattern="^adm"))
     app.add_handler(conv_handler)
     
-    logger.info("🔥 Arena Platform is Live!")
+        logger.info("🔥 Arena Platform is Live!")
+    
+    # FORCED LOOP CREATION (The Nuclear Fix)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     app.run_polling()
 
 if __name__ == "__main__":
