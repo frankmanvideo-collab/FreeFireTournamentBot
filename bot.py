@@ -537,10 +537,18 @@ async def start_web_server():
     await web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 8080))).start()
 
 # ==========================================
-# 15. MAIN BOOT SEQUENCE
+# 15. MAIN BOOT SEQUENCE (Fixed)
 # ==========================================
+async def start_services(application: Application):
+    """Ye bot on hone ke turant baad Scraper aur Web Server on karega"""
+    loop = asyncio.get_running_loop()
+    loop.create_task(start_web_server())
+    loop.create_task(start_all_workers())
+    logger.info("🔥 Arena Platform is Live!")
+
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    # Application builder mein post_init laga diya hai!
+    app = Application.builder().token(BOT_TOKEN).post_init(start_services).build()
     
     conv_handler = ConversationHandler(
         entry_points=[
@@ -577,11 +585,7 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_btns, pattern="^adm"))
     app.add_handler(conv_handler)
     
-    loop = asyncio.get_event_loop()
-    loop.create_task(start_web_server())
-    loop.create_task(start_all_workers())
-    
-    logger.info("🔥 Arena Platform is Live!")
+    # Ab koi loop ya try-except nahi, seedha bot start hoga!
     app.run_polling()
 
 if __name__ == "__main__":
