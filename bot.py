@@ -395,6 +395,29 @@ async def admin_btns(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif action == "delete":
         await query.message.delete()
 
+async def admin_hype_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat_id != ADMIN_GROUP_ID: return
+    if not CHANNEL_ID: return await update.message.reply_text("❌ CHANNEL_ID missing in Secrets.")
+    names = ["❖Rᴀнᴜʟ", "ProSniper99", "VIPER_FF", "SK_SABIR_FAN", "Riya♡Gaming", "GHOST_RIDER", "X-MAN_007"]
+    win_name = random.choice(names)
+    m_id = random.randint(1000, 9999)
+    msgs = [
+        f"🔥 **INSANE WIN!** Player **{win_name}** snatched Rank 1 in Match #{m_id} and cashed out ₹300! 💸",
+        f"🏆 **BOOYAH!** **{win_name}** dominated Match #{m_id} and took home ₹300 via UPI! ⚡",
+        f"🤑 **EASY MONEY!** **{win_name}** just won Match #{m_id}! Join now and earn real cash! 💰"
+    ]
+    try:
+        await context.bot.send_message(chat_id=CHANNEL_ID, text=random.choice(msgs), parse_mode='Markdown')
+        await update.message.reply_text("✅ Fake Hype Sent to Public Channel!")
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+
+async def admin_status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat_id != ADMIN_GROUP_ID: return
+    active_workers = len(pyro_clients)
+    await update.message.reply_text(f"🟢 **SERVER STATUS: ONLINE**\n🤖 Active Scrapers: {active_workers}\n(Engine running smoothly)", parse_mode='Markdown')
+
+
 async def add_worker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat_id != ADMIN_GROUP_ID: return
     phone = context.args[0]
@@ -471,6 +494,8 @@ def main():
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("join", join_channel_cmd))
+    app.add_handler(CommandHandler("hype", admin_hype_cmd))
+    app.add_handler(CommandHandler("status", admin_status_cmd))
     app.add_handler(MessageHandler(filters.Regex("^(📊 MY WALLET|🎁 DAILY REWARD|🤝 HELP / SUPPORT|🎯 MY MATCHES)$"), handle_menu))
     app.add_handler(CallbackQueryHandler(legal_callback, pattern="^legal_"))
     app.add_handler(CallbackQueryHandler(conf_join, pattern="^confjoin_"))
