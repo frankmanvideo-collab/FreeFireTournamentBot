@@ -258,7 +258,7 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(kbd) if kbd else None)
 
     elif text == "🤝 HELP / SUPPORT":
-        await update.message.reply_text("📞 **Support Center**\nTelegram: @Tughh_456", parse_mode='Markdown')
+        await update.message.reply_text("📞 **Support Center**\nEmail: frankmanvideo@gmail.com\nTelegram: @Tughh_456", parse_mode='Markdown')
 
     return ConversationHandler.END
 
@@ -344,8 +344,14 @@ async def enter_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return WAIT_ADD_AMT
         
     context.user_data['dep_amt'] = amt
-    upi_id = "yourfampay@fam" # PUT REAL UPI HERE
-    await update.message.reply_text(f"Kripaya is QR par exact **₹{amt}** bhejein:\n`{upi_id}`\n\nUske baad **Payment Success ka Screenshot** yahan bhejein.", parse_mode='Markdown', reply_markup=get_cancel_kbd())
+    
+    # 💳 REAL UPI ID INJECTED HERE
+    upi_id = "dipanshu153@fam"
+    
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa={upi_id}%26pn=ArenaEsports%26am={amt}%26cu=INR"
+    msg = f"💳 **PAYMENT DETAILS**\n\nKripaya is QR code par ya niche di gayi UPI ID par exact **₹{amt}** bhejein:\n👉 `{upi_id}`\n\nUske baad **Payment Success ka Screenshot** yahan upload karein."
+    
+    await update.message.reply_photo(photo=qr_url, caption=msg, parse_mode='Markdown', reply_markup=get_cancel_kbd())
     return WAIT_PAY_PROOF
 
 async def process_payment_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -512,6 +518,7 @@ async def admin_status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 13. ADMIN SCRAPER COMMANDS
 # ==========================================
 async def add_worker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat_id != ADMIN_GROUP_ID: return
     phone = context.args[0]
     client = PyroClient(f"worker_{phone}", api_id=API_ID, api_hash=API_HASH, in_memory=True)
     await client.connect()
@@ -544,6 +551,7 @@ async def worker_pass_recv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def join_channel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat_id != ADMIN_GROUP_ID: return
     phone, channel = context.args[0], context.args[1]
     client = pyro_clients.get(phone)
     if client:
