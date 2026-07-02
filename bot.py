@@ -616,7 +616,7 @@ def main():
     app.add_handler(CommandHandler("hype", admin_hype_cmd))
     app.add_handler(CommandHandler("status", admin_status_cmd))
     
-    app.add_handler(MessageHandler(filters.Regex("^(📊 MY WALLET|🎁 DAILY REWARD|🤝 HELP / SUPPORT|🎯 MY MATCHES)$"), handle_menu))
+    app.add_handler(MessageHandler(filters.Regex(".*(MY WALLET|DAILY REWARD|HELP|MY MATCHES).*"), handle_menu))
     app.add_handler(CallbackQueryHandler(legal_callback, pattern="^legal_"))
     app.add_handler(CallbackQueryHandler(conf_join, pattern="^confjoin_"))
     app.add_handler(CallbackQueryHandler(do_join, pattern="^dojoin_"))
