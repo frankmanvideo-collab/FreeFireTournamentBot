@@ -258,7 +258,7 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(kbd) if kbd else None)
 
     elif text == "🤝 HELP / SUPPORT":
-        await update.message.reply_text("📞 **Support Center**\nTelegram: @FrankmanVideo", parse_mode='Markdown')
+        await update.message.reply_text("📞 **Support Center**\nTelegram: @Tughh_456", parse_mode='Markdown')
 
     return ConversationHandler.END
 
