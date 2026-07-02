@@ -77,13 +77,16 @@ def get_utr_prefixes():
     return [str(now.year)[-1] + now.strftime("%j"), str(yest.year)[-1] + yest.strftime("%j")]
 
 async def analyze_image(b64_image, prompt, key):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
     payload = {"contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": "image/jpeg", "data": b64_image}}]}]}
     try:
-        resp = await asyncio.to_thread(requests.post, url, json=payload)
+        # Added 12 seconds timeout so bot NEVER freezes!
+        resp = await asyncio.to_thread(requests.post, url, json=payload, timeout=12)
+        if resp.status_code != 200:
+            return "AI_FAILED"
         return resp.json()['candidates'][0]['content']['parts'][0]['text']
     except Exception as e:
-        logger.error(f"AI Error: {e}")
+        logger.error(f"AI Timeout/Error: {e}")
         return "AI_FAILED"
 
 async def start_all_workers():
