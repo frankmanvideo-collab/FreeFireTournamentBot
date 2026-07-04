@@ -31,11 +31,7 @@ ADMIN_GROUP_ID = int(os.environ.get("ADMIN_GROUP_ID", "0"))
 CHANNEL_ID = os.environ.get("CHANNEL_ID", "")
 
 IST = pytz.timezone('Asia/Kolkata')
-
-if SUPABASE_URL and SUPABASE_KEY:
-    db: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-else:
-    logger.error("SUPABASE KEYS MISSING!")
+db: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 join_locks = {}
 pyro_clients = {}
@@ -68,11 +64,9 @@ def deduct_balance(user_id, amount):
     user = get_user(user_id)
     rem = amount
     b_bal, d_bal, w_bal = user['bonus_balance'], user['deposit_balance'], user['winning_balance']
-    
     ded_b = min(b_bal, rem); rem -= ded_b; b_bal -= ded_b
     ded_d = min(d_bal, rem); rem -= ded_d; d_bal -= ded_d
     ded_w = min(w_bal, rem); rem -= ded_w; w_bal -= ded_w
-    
     if rem > 0: return False
     db.table("users").update({"bonus_balance": b_bal, "deposit_balance": d_bal, "winning_balance": w_bal}).eq("user_id", user_id).execute()
     return True
@@ -83,7 +77,7 @@ def get_utr_prefixes():
     return [str(now.year)[-1] + now.strftime("%j"), str(yest.year)[-1] + yest.strftime("%j")]
 
 # ==========================================
-# 3. AI DUAL-CORE ENGINE (Timeout Fixed)
+# 3. AI DUAL-CORE ENGINE (Anti-Freeze)
 # ==========================================
 async def analyze_image(b64_image, prompt, key):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
@@ -94,11 +88,11 @@ async def analyze_image(b64_image, prompt, key):
             return "AI_FAILED"
         return resp.json()['candidates'][0]['content']['parts'][0]['text']
     except Exception as e:
-        logger.error(f"AI Error: {e}")
+        logger.error(f"AI Timeout/Error: {e}")
         return "AI_FAILED"
 
 # ==========================================
-# 4. HYDRA SCRAPER ENGINE
+# 4. HYDRA SCRAPER ENGINE (Pyrogram)
 # ==========================================
 async def start_all_workers():
     workers = db.table("workers").select("*").execute().data
@@ -129,21 +123,25 @@ async def start_all_workers():
             logger.error(f"Worker {phone} failed: {e}")
 
 # ==========================================
-# 5. UX MENUS & ESCAPE HATCHES
+# 5. UX MENUS & ESCAPE HATCHES (INLINE)
 # ==========================================
 def get_main_menu():
     kbd = [
-        [KeyboardButton("🎮 PLAY FREE FIRE"), KeyboardButton("🎯 MY MATCHES")],
-        [KeyboardButton("💰 ADD FUNDS"), KeyboardButton("💸 WITHDRAW CASH")],
-        [KeyboardButton("🎁 DAILY REWARD"), KeyboardButton("🤝 HELP / SUPPORT")]
+        [InlineKeyboardButton("🎮 PLAY FREE FIRE", callback_data="menu_play"), InlineKeyboardButton("🎯 MY MATCHES", callback_data="menu_matches")],
+        [InlineKeyboardButton("💰 ADD FUNDS", callback_data="menu_add_funds"), InlineKeyboardButton("💸 WITHDRAW CASH", callback_data="menu_withdraw")],
+        [InlineKeyboardButton("🎁 DAILY REWARD", callback_data="menu_daily"), InlineKeyboardButton("🤝 HELP / SUPPORT", callback_data="menu_help")]
     ]
-    return ReplyKeyboardMarkup(kbd, resize_keyboard=True)
+    return InlineKeyboardMarkup(kbd)
 
 def get_cancel_kbd():
-    return ReplyKeyboardMarkup([[KeyboardButton("❌ Cancel & Go Back")]], resize_keyboard=True)
+    return InlineKeyboardMarkup([[InlineKeyboardButton("❌ Cancel & Go Back", callback_data="menu_main")]])
 
 async def cancel_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚫 **Action Cancelled!** Wapas Main Menu par aagaye hain.", parse_mode='Markdown', reply_markup=get_main_menu())
+    msg = "🔥 **Welcome back to Free Fire Tournaments!**\n_Select an option below:_"
+    if update.callback_query:
+        await update.callback_query.message.edit_text(msg, reply_markup=get_main_menu(), parse_mode='Markdown')
+    else:
+        await update.message.reply_text(msg, reply_markup=get_main_menu(), parse_mode='Markdown')
     return ConversationHandler.END
 
 # ==========================================
@@ -166,7 +164,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kbd), parse_mode='Markdown')
         return ConversationHandler.END
 
-    await update.message.reply_text("🔥 **Welcome back to Free Fire Tournaments!**", reply_markup=get_main_menu(), parse_mode='Markdown')
+    await update.message.reply_text("🔥 **Welcome back to Free Fire Tournaments!**\n_Select an option below:_ 👇", reply_markup=get_main_menu(), parse_mode='Markdown')
     return ConversationHandler.END
 
 async def legal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,29 +173,29 @@ async def legal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == "legal_yes":
         db.table("users").update({"is_18_plus": True}).eq("user_id", query.from_user.id).execute()
         await query.message.delete()
-        await query.message.reply_text("✅ **Verification Successful! Welcome to the Arena!** 🔥", reply_markup=get_main_menu(), parse_mode='Markdown')
+        await query.message.reply_text("✅ **Verification Successful!**\n🔥 Welcome to the Arena!\n_Select an option below:_ 👇", reply_markup=get_main_menu(), parse_mode='Markdown')
     else:
         await query.message.edit_text("❌ Sorry! You must be 18+ to play on this platform.")
 
 # ==========================================
-# 7. MAIN ENGINE (Clean Buttons)
+# 7. MAIN ENGINE (Inline Router)
 # ==========================================
-async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text: return
-    text = update.message.text.upper()
-    
-    if "CANCEL" in text:
-        return await cancel_action(update, context)
-
-    user_id = update.message.from_user.id
+async def handle_inline_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    user_id = query.from_user.id
     user = get_user(user_id)
 
     if user['is_restricted']:
-        return await update.message.reply_text("🚨 Aapka account suspended hai.")
+        return await query.message.edit_text("🚨 Aapka account suspended hai.")
 
-    if "PLAY" in text:
-        if not user['ff_ign'].replace('_', '\\_'):
-            await update.message.reply_text("⚠️ **PROFILE CONFIGURATION** ⚠️\nApna exact Free Fire Nickname type karein:", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
+    if data == "menu_main":
+        return await cancel_action(update, context)
+
+    elif data == "menu_play":
+        if not user['ff_ign']:
+            await query.message.edit_text("⚠️ **PROFILE CONFIGURATION** ⚠️\nApna exact Free Fire Nickname type karein:", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
             return WAIT_IGN
             
         exp_time = (datetime.now(IST) - timedelta(minutes=MATCH_LIVE_MINS)).isoformat()
@@ -205,7 +203,7 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         matches = db.table("matches").select("*").gt("tickets_left", 0).execute().data
         if not matches:
-            await update.message.reply_text("🟡 **Koi match Live nahi hai!** Scraper match dhoondh raha hai, thodi der mein aaiye! ⏳", parse_mode='Markdown')
+            await query.message.edit_text("🟡 **Koi match Live nahi hai!** Scraper match dhoondh raha hai, thodi der mein aaiye! ⏳", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
             return ConversationHandler.END
             
         msg = "🔴 **LIVE BATTLE BOARD** 🔴\n_Make sure all maps (Bermuda, Kalahari) are downloaded!_\n\n"
@@ -213,13 +211,14 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for m in matches:
             msg += f"🔥 **Match #{m['match_id']}** | Tickets Left: **{m['tickets_left']}/10**\n💰 Entry: **₹{ENTRY_FEE}** | Prize: **₹{PRIZE_MONEY}**\n\n"
             kbd.append([InlineKeyboardButton(f"🔒 JOIN #{m['match_id']} (₹50)", callback_data=f"confjoin_{m['match_id']}")])
-        await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(kbd), parse_mode='Markdown')
+        kbd.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="menu_main")])
+        await query.message.edit_text(msg, reply_markup=InlineKeyboardMarkup(kbd), parse_mode='Markdown')
 
-    elif "ADD FUNDS" in text:
-        await update.message.reply_text("💸 **Kitne Rupaye add karne hain?** (Min: ₹30)\n_Niche amount type karein:_ 👇", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
+    elif data == "menu_add_funds":
+        await query.message.edit_text("💸 **Kitne Rupaye add karne hain?** (Min: ₹30)\n_Niche amount type karein:_ 👇", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
         return WAIT_ADD_AMT
 
-    elif "WITHDRAW" in text:
+    elif data == "menu_withdraw":
         tot = user['deposit_balance'] + user['winning_balance'] + user['bonus_balance']
         msg = (f"💰 **Total Balance:** ₹{tot}\n\n"
                f"🟢 **Winnings:** ₹{user['winning_balance']} _(Withdrawable)_\n"
@@ -228,25 +227,25 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                f"🔒 **Locked:** ₹{user['locked_balance']}\n\n"
                f"*(Min withdrawal: ₹200 Winnings)*")
         if user['winning_balance'] < 200:
-            await update.message.reply_text(msg + "\n\n❌ **Oops! Minimum ₹200 Winnings needed to withdraw.**", parse_mode='Markdown')
+            await query.message.edit_text(msg + "\n\n❌ **Oops! Minimum ₹200 Winnings needed to withdraw.**", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
             return ConversationHandler.END
         
-        await update.message.reply_text(msg + "\n\n📸 Apna **UPI QR Code** ki photo bhejein:", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
+        await query.message.edit_text(msg + "\n\n📸 Apna **UPI QR Code** ki photo bhejein:", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
         return WAIT_WITHDRAW_QR
 
-    elif "DAILY REWARD" in text:
+    elif data == "menu_daily":
         today = datetime.now(IST).strftime("%Y-%m-%d")
         if user['last_login'] == today:
-            await update.message.reply_text("❌ **Aap aaj ka Bonus claim kar chuke hain.** Kal aaiye! ⏳", parse_mode='Markdown')
+            await query.message.edit_text("❌ **Aap aaj ka Bonus claim kar chuke hain.** Kal aaiye! ⏳", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
         else:
             reward = random.randint(2, 5)
             db.table("users").update({"bonus_balance": user['bonus_balance'] + reward, "last_login": today}).eq("user_id", user_id).execute()
-            await update.message.reply_text(f"🎉 **JACKPOT!** Aapko **₹{reward} Bonus Cash** mila hai! 🎁\nCome back tomorrow for more!", parse_mode='Markdown')
+            await query.message.edit_text(f"🎉 **JACKPOT!** Aapko **₹{reward} Bonus Cash** mila hai! 🎁\nCome back tomorrow for more!", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
 
-    elif "MATCHES" in text:
+    elif data == "menu_matches":
         ums = db.table("user_matches").select("*").eq("user_id", user_id).execute().data
         if not ums: 
-            await update.message.reply_text("❌ Aapne abhi tak koi match nahi khela.")
+            await query.message.edit_text("❌ Aapne abhi tak koi match nahi khela.", reply_markup=get_cancel_kbd())
             return ConversationHandler.END
             
         msg = "🎯 **YOUR RECENT MATCHES** 🎯\n\n"
@@ -266,11 +265,11 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     kbd.append([InlineKeyboardButton(f"🏆 I WON! (Claim #{um['match_id']})", callback_data=f"up_proof_{um['match_id']}")])
             else: msg += "\n"
-                
-        await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(kbd) if kbd else None)
+        kbd.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="menu_main")])        
+        await query.message.edit_text(msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(kbd))
 
-    elif "HELP" in text or "SUPPORT" in text:
-        await update.message.reply_text("📞 **Support Center**\n📧 Email: `frankmanvideo@gmail.com`\n✈️ Telegram: @Tughh_456", parse_mode='Markdown')
+    elif data == "menu_help":
+        await query.message.edit_text("📞 <b>Support Center</b>\n📧 Email: <code>frankmanvideo@gmail.com</code>\n✈️ Telegram: @Tughh_456", reply_markup=get_cancel_kbd(), parse_mode='HTML')
 
     return ConversationHandler.END
 
@@ -282,8 +281,8 @@ async def conf_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     match_id = query.data.split("_")[1]
     kbd = [[InlineKeyboardButton("✅ YES, JOIN (Pay ₹50)", callback_data=f"dojoin_{match_id}")],
-           [InlineKeyboardButton("🔙 CANCEL", callback_data="delete_msg")]]
-    await query.message.reply_text(f"Are you sure you want to pay **₹50** for **Match #{match_id}**?", reply_markup=InlineKeyboardMarkup(kbd), parse_mode='Markdown')
+           [InlineKeyboardButton("🔙 CANCEL", callback_data="menu_play")]]
+    await query.message.edit_text(f"Are you sure you want to pay **₹50** for **Match #{match_id}**?", reply_markup=InlineKeyboardMarkup(kbd), parse_mode='Markdown')
 
 async def do_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -292,21 +291,21 @@ async def do_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     
     exists = db.table("user_matches").select("*").eq("user_id", user_id).eq("match_id", match_id).execute().data
-    if exists: return await query.message.edit_text("❌ Aap is match mein pehle se hain.")
+    if exists: return await query.message.edit_text("❌ Aap is match mein pehle se hain.", reply_markup=get_cancel_kbd())
 
     lock_key = f"join_{match_id}"
     if lock_key not in join_locks: join_locks[lock_key] = asyncio.Lock()
     
     async with join_locks[lock_key]:
         match = db.table("matches").select("*").eq("match_id", match_id).execute().data[0]
-        if match['tickets_left'] <= 0: return await query.message.edit_text("❌ Oops! Ye match just abhi full ho gaya!")
+        if match['tickets_left'] <= 0: return await query.message.edit_text("❌ Oops! Ye match just abhi full ho gaya!", reply_markup=get_cancel_kbd())
             
         if deduct_balance(user_id, ENTRY_FEE):
             db.table("matches").update({"tickets_left": match['tickets_left'] - 1}).eq("match_id", match_id).execute()
             db.table("user_matches").insert({"user_id": user_id, "match_id": match_id, "status": "JOINED", "joined_at": datetime.now(IST).isoformat()}).execute()
-            await query.message.edit_text(f"🔥 **ENTRY CONFIRMED!** 🎮\n\n🔑 ID: `{match['room_id']}`\n🔐 Pass: `{match['room_pass']}`\n\n_*(Jaldi room join karein! Refund {REFUND_WINDOW_MINS} min tak available hai)*_", parse_mode='Markdown')
+            await query.message.edit_text(f"🔥 **ENTRY CONFIRMED!** 🎮\n\n🔑 ID: `{match['room_id']}`\n🔐 Pass: `{match['room_pass']}`\n\n_*(Jaldi room join karein! Refund {REFUND_WINDOW_MINS} min tak available hai)*_", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
         else:
-            await query.message.edit_text("❌ **Insufficient Funds!** Kripaya recharge karein.", parse_mode='Markdown')
+            await query.message.edit_text("❌ **Insufficient Funds!** Kripaya recharge karein.", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
 
 async def ask_refund(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -318,7 +317,7 @@ async def ask_refund(update: Update, context: ContextTypes.DEFAULT_TYPE):
            "3. Agar aapne refund lekar jeeta, toh Prize **NAHI** milega.\n\n"
            "Confirm karte hain?")
     kbd = [[InlineKeyboardButton("✅ YES, REFUND ₹50", callback_data=f"doref_{match_id}")],
-           [InlineKeyboardButton("🔙 NO, TAKE ME BACK", callback_data="delete_msg")]]
+           [InlineKeyboardButton("🔙 NO, TAKE ME BACK", callback_data="menu_matches")]]
     await query.message.edit_text(msg, reply_markup=InlineKeyboardMarkup(kbd), parse_mode='Markdown')
 
 async def do_refund(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -332,7 +331,7 @@ async def do_refund(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db.table("users").update({"deposit_balance": get_user(user_id)['deposit_balance'] + ENTRY_FEE}).eq("user_id", user_id).execute()
     db.table("user_matches").update({"status": "REFUNDED"}).eq("id", um['id']).execute()
-    await query.message.edit_text("✅ **Refund Successful!** ₹50 aapke wallet mein add ho gaye hain.", parse_mode='Markdown')
+    await query.message.edit_text("✅ **Refund Successful!** ₹50 aapke wallet mein add ho gaye hain.", reply_markup=get_cancel_kbd(), parse_mode='Markdown')
 
 async def cancel_inline(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.message.delete()
@@ -340,25 +339,23 @@ async def cancel_inline(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==========================================
 # 9. DEPOSIT ENGINE (Strict Photo Handlers)
 # ==========================================
+def is_cancel(text): return bool(text) and "CANCEL" in text.upper()
+
 async def save_ign_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text: return WAIT_IGN
-    if "CANCEL" in update.message.text.upper(): return await cancel_action(update, context)
-    
+    if is_cancel(update.message.text): return await cancel_action(update, context)
     text = update.message.text.strip()
     db.table("users").update({"ff_ign": text}).eq("user_id", update.message.from_user.id).execute()
     await update.message.reply_text("✅ **IGN Locked successfully!** 🎮\n_Select an option:_ 👇", reply_markup=get_main_menu(), parse_mode='Markdown')
     return ConversationHandler.END
 
 async def enter_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text: return WAIT_ADD_AMT
-    if "CANCEL" in update.message.text.upper(): return await cancel_action(update, context)
-    
+    if is_cancel(update.message.text): return await cancel_action(update, context)
     text = update.message.text
     try:
         amt = float(text)
         if amt < 30: raise ValueError
     except:
-        await update.message.reply_text("❌ Minimum ₹30 allowed. Sahi number likhein.")
+        await update.message.reply_text("❌ Minimum ₹30 allowed. Sahi number likhein.", reply_markup=get_cancel_kbd())
         return WAIT_ADD_AMT
         
     context.user_data['dep_amt'] = amt
@@ -371,9 +368,9 @@ async def enter_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return WAIT_PAY_PROOF
 
 async def process_payment_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message and update.message.text and "CANCEL" in update.message.text.upper(): return await cancel_action(update, context)
+    if is_cancel(update.message.text): return await cancel_action(update, context)
     
-    if not update.message or not update.message.photo:
+    if not update.message.photo:
         await update.message.reply_text("❌ Kripaya sirf Payment Success ka **Screenshot (Photo)** bhejein.", parse_mode='Markdown', reply_markup=get_cancel_kbd())
         return WAIT_PAY_PROOF
         
@@ -394,34 +391,30 @@ async def process_payment_proof(update: Update, context: ContextTypes.DEFAULT_TY
         amt_m = re.search(r'AMOUNT:\s*(\d+)', ai_text)
         
         if not utr_m:
-            await msg.edit_text("⚠️ AI couldn't read the UTR clearly. Request sent to Admin for Manual Check.")
-            utr = "MANUAL"
+            await msg.edit_text("⚠️ AI couldn't read the UTR clearly. Request sent to Admin for Manual Check.", reply_markup=get_cancel_kbd())
+            utr = "MANUAL_CHECK"
             ai_amt = claimed_amt
         else:
             utr = utr_m.group(1)
             ai_amt = float(amt_m.group(1)) if amt_m else claimed_amt
             
             if db.table("used_utrs").select("*").eq("utr", utr).execute().data:
-                await msg.edit_text("🚫 SYSTEM ALERT: Duplicate UTR detected. Scammer request Rejected.")
+                await msg.edit_text("🚫 SYSTEM ALERT: Duplicate UTR detected. Scammer request Rejected.", reply_markup=get_cancel_kbd())
                 return ConversationHandler.END
                 
             if not any(utr.startswith(p) for p in get_utr_prefixes()):
-                await msg.edit_text("🚫 SYSTEM ALERT: Ye UTR aaj/kal ka nahi hai. Request Auto-Rejected.")
+                await msg.edit_text("🚫 SYSTEM ALERT: Ye UTR aaj/kal ka nahi hai. Request Auto-Rejected.", reply_markup=get_cancel_kbd())
                 return ConversationHandler.END
 
         kbd = [[InlineKeyboardButton(f"✅ APPROVE ₹{ai_amt}", callback_data=f"admdep_{user_id}_{utr}_{ai_amt}")],
                [InlineKeyboardButton("❌ REJECT", callback_data=f"admrej_{user_id}")]]
-        dossier = (f"🚨 **DEPOSIT REQUEST** 🚨\n"
-                   f"👤 User: {user_id}\n"
-                   f"💰 Claimed: ₹{claimed_amt}\n"
-                   f"🤖 AI Found: **₹{ai_amt}**\n"
-                   f"🔢 UTR: `{utr}`")
+        dossier = f"🚨 **DEPOSIT REQUEST** 🚨\n👤 User: {user_id}\n💰 Claimed: ₹{claimed_amt}\n🤖 AI Found: **₹{ai_amt}**\n🔢 UTR: `{utr}`"
         
         await context.bot.send_photo(chat_id=ADMIN_GROUP_ID, photo=photo_file.file_id, caption=dossier, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(kbd))
         await msg.edit_text("✅ **Screenshot Saved!** Admin checking... Balance will be added in 2-5 mins.", parse_mode='Markdown', reply_markup=get_main_menu())
     except Exception as e:
         logger.error(f"Upload Error: {e}")
-        await msg.edit_text("⚠️ An error occurred. Try again later.")
+        await msg.edit_text("⚠️ An error occurred. Try again later.", reply_markup=get_cancel_kbd())
         return WAIT_PAY_PROOF
         
     return ConversationHandler.END
@@ -430,9 +423,9 @@ async def process_payment_proof(update: Update, context: ContextTypes.DEFAULT_TY
 # 10. WITHDRAW ENGINE (Locked Balance)
 # ==========================================
 async def process_withdraw_qr(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message and update.message.text and "CANCEL" in update.message.text.upper(): return await cancel_action(update, context)
+    if is_cancel(update.message.text): return await cancel_action(update, context)
     
-    if not update.message or not update.message.photo:
+    if not update.message.photo:
         await update.message.reply_text("❌ Kripaya sirf UPI QR Code ki **photo** bhejein.", parse_mode='Markdown', reply_markup=get_cancel_kbd())
         return WAIT_WITHDRAW_QR
         
@@ -455,15 +448,14 @@ async def up_proof_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data['win_match'] = query.data.split("_")[2]
-    await query.message.reply_text(
+    await query.message.edit_text(
         "🎉 **You Won!** Send your 'Match Results' screenshot below.\n*(Do NOT crop the photo)*", 
         parse_mode='Markdown', reply_markup=get_cancel_kbd()
     )
     return WAIT_WIN_PROOF
 
 async def process_win_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if text and "CANCEL" in text.upper(): return await cancel_action(update, context)
+    if is_cancel(update.message.text): return await cancel_action(update, context)
     
     if not update.message.photo:
         await update.message.reply_text("❌ Kripaya sirf Match Scoreboard ki **photo (Screenshot)** bhejein.", parse_mode='Markdown', reply_markup=get_cancel_kbd())
@@ -472,7 +464,7 @@ async def process_win_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     match_id = context.user_data['win_match']
     
-    msg = await update.message.reply_text("⏳ Verifying with AI... (Please wait 10s)", reply_markup=get_main_menu())
+    msg = await update.message.reply_text("⏳ Verifying with AI... (Please wait 10s)")
     await context.bot.send_chat_action(chat_id=user_id, action='typing')
     
     try:
@@ -486,17 +478,214 @@ async def process_win_proof(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         kbd = [[InlineKeyboardButton(f"✅ APPROVE ₹{PRIZE_MONEY}", callback_data=f"admprize_{user_id}_{match_id}")],
                [InlineKeyboardButton("❌ REJECT (Scam)", callback_data=f"admrej_{user_id}")]]
-        
+               
         safe_ign = get_user(user_id)['ff_ign'].replace('_', '')
         dossier = f"🚨 **VERIFICATION DOSSIER** 🚨\n👤 User: {user_id}\n🎮 Locked IGN: `{safe_ign}`\n🤖 AI Read: {ai_text}"
         
         await context.bot.send_photo(chat_id=ADMIN_GROUP_ID, photo=photo_file.file_id, caption=dossier, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(kbd))
-        await msg.edit_text("✅ Photo sent to Admin! Amount will be credited shortly.")
+        await msg.edit_text("✅ Photo sent to Admin! Amount will be credited shortly.", reply_markup=get_main_menu())
     except Exception as e:
         logger.error(f"Error in process_win_proof: {e}")
-        await msg.edit_text("⚠️ An error occurred. Try again.")
+        await msg.edit_text("⚠️ An error occurred. Try again.", reply_markup=get_cancel_kbd())
         return WAIT_WIN_PROOF
         
     return ConversationHandler.END
 
+# ==========================================
+# 12. ADMIN & HYPE COMMANDS
+# ==========================================
+async def admin_btns(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data.split("_")
+    action = data[0]
+    
+    if action == "admdep":
+        user_id, utr, amt = int(data[1]), data[2], float(data[3])
+        db.table("users").update({"deposit_balance": get_user(user_id)['deposit_balance'] + amt}).eq("user_id", user_id).execute()
+        if utr != "MANUAL_CHECK": db.table("used_utrs").insert({"utr": utr}).execute()
+        await context.bot.send_message(chat_id=user_id, text=f"✅ **PAYMENT SUCCESS!** 💰 ₹{amt} added!", parse_mode='Markdown')
+        await query.message.edit_caption(caption=f"✅ APPROVED ₹{amt}")
+        
+    elif action == "admpaid":
+        user_id, amt = int(data[1]), float(data[2])
+        db.table("users").update({"locked_balance": get_user(user_id)['locked_balance'] - amt}).eq("user_id", user_id).execute()
+        await context.bot.send_message(chat_id=user_id, text=f"✅ **WITHDRAWAL PROCESSED!** ₹{amt} sent to your QR.", parse_mode='Markdown')
+        await query.message.edit_caption(caption="✅ PAID & CLEARED")
+        
+    elif action == "admrejwd":
+        user_id, amt = int(data[1]), float(data[2])
+        user = get_user(user_id)
+        db.table("users").update({"locked_balance": user['locked_balance'] - amt, "winning_balance": user['winning_balance'] + amt}).eq("user_id", user_id).execute()
+        await query.message.edit_caption(caption="❌ REJECTED. Funds Unlocked.")
+        
+    elif action == "admprize":
+        user_id, match_id = int(data[1]), data[2]
+        db.table("users").update({"winning_balance": get_user(user_id)['winning_balance'] + PRIZE_MONEY}).eq("user_id", user_id).execute()
+        db.table("user_matches").update({"status": "WON"}).eq("user_id", user_id).eq("match_id", match_id).execute()
+        await context.bot.send_message(chat_id=user_id, text=f"🏆 **BOOYAH!** Payout verified! ₹{PRIZE_MONEY} added to Winnings!", parse_mode='Markdown')
+        await query.message.edit_caption(caption="✅ PAYOUT DONE")
+        
+        if CHANNEL_ID:
+            safe_ign = get_user(user_id)['ff_ign'].replace('_', '\\_')
+            blast_msg = f"🏆 **BOOYAH!** 🏆\n\n🎉 Player **{safe_ign}** just won Match #{match_id} and cashed out **₹{PRIZE_MONEY}**!\n\n💸 Khelo aur Jeeto! Start the bot now!"
+            try: await context.bot.send_message(chat_id=CHANNEL_ID, text=blast_msg, parse_mode='Markdown')
+            except: pass
+        
+    elif action == "admrej":
+        await query.message.edit_caption(caption="❌ REJECTED / SCAM")
+        
+    elif action == "delete":
+        await query.message.delete()
 
+async def admin_hype_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat_id != ADMIN_GROUP_ID: return
+    if not CHANNEL_ID: return await update.message.reply_text("❌ CHANNEL_ID missing in Secrets.")
+    
+    names = ["❖Rᴀнᴜʟ", "ProSniper99", "VIPER_FF", "SK_SABIR_FAN", "Riya♡Gaming", "GHOST_RIDER", "X-MAN_007"]
+    win_name = random.choice(names)
+    m_id = random.randint(1000, 9999)
+    
+    msgs = [
+        f"🔥 **INSANE WIN!** Player **{win_name}** snatched Rank 1 in Match #{m_id} and cashed out ₹300! 💸",
+        f"🏆 **BOOYAH!** **{win_name}** dominated Match #{m_id} and took home ₹300 via UPI! ⚡",
+        f"🤑 **EASY MONEY!** **{win_name}** just won Match #{m_id}! Join now and earn real cash! 💰"
+    ]
+    try:
+        await context.bot.send_message(chat_id=CHANNEL_ID, text=random.choice(msgs), parse_mode='Markdown')
+        await update.message.reply_text("✅ Fake Hype Sent to Public Channel!")
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+
+async def admin_status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat_id != ADMIN_GROUP_ID: return
+    active_workers = len(pyro_clients)
+    await update.message.reply_text(f"🟢 **SERVER STATUS: ONLINE**\n🤖 Active Scrapers: {active_workers}\n(Replit engine running smoothly)", parse_mode='Markdown')
+
+# ==========================================
+# 13. ADMIN SCRAPER COMMANDS
+# ==========================================
+async def add_worker_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat_id != ADMIN_GROUP_ID: return
+    if not context.args: return await update.message.reply_text("❌ Number missing! Use: `/add_worker +919876543210`")
+    phone = context.args[0]
+    client = PyroClient(f"worker_{phone}", api_id=API_ID, api_hash=API_HASH, in_memory=True)
+    await client.connect()
+    sent_code = await client.send_code(phone)
+    auth_cache[phone] = {'client': client, 'hash': sent_code.phone_code_hash}
+    context.user_data['auth_phone'] = phone
+    await update.message.reply_text(f"OTP sent to {phone}. Reply with OTP:")
+    return WAIT_WORKER_OTP
+
+async def worker_otp_recv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat_id != ADMIN_GROUP_ID: return
+    phone, otp = context.user_data.get('auth_phone'), update.message.text
+    if not phone or phone not in auth_cache: return await update.message.reply_text("Session expired. Run /add_worker again.")
+    data = auth_cache[phone]
+    try:
+        await data['client'].sign_in(phone, data['hash'], otp)
+        db.table("workers").insert({"phone": phone, "session_string": await data['client'].export_session_string()}).execute()
+        await update.message.reply_text(f"✅ Worker {phone} Active!")
+        return ConversationHandler.END
+    except Exception as e:
+        if "SessionPasswordNeeded" in str(e):
+            await update.message.reply_text("2FA Password Required. Send password:")
+            return WAIT_WORKER_PASS
+        await update.message.reply_text(f"Error: {e}"); return ConversationHandler.END
+
+async def worker_pass_recv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat_id != ADMIN_GROUP_ID: return
+    phone, pwd = context.user_data.get('auth_phone'), update.message.text
+    if not phone or phone not in auth_cache: return await update.message.reply_text("Session expired.")
+    data = auth_cache[phone]
+    await data['client'].check_password(pwd)
+    db.table("workers").insert({"phone": phone, "session_string": await data['client'].export_session_string()}).execute()
+    await update.message.reply_text(f"✅ Worker {phone} Active!")
+    return ConversationHandler.END
+
+async def join_channel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat_id != ADMIN_GROUP_ID: return
+    if len(context.args) < 2: return await update.message.reply_text("❌ Missing args! Use: `/join worker_phone @channel`")
+    phone, channel = context.args[0], context.args[1]
+    client = pyro_clients.get(phone)
+    if client:
+        try:
+            await client.join_chat(channel)
+            await update.message.reply_text(f"✅ {phone} joined {channel} & listening for matches!")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Join Error: {e}")
+    else:
+        await update.message.reply_text("❌ Worker not running.")
+
+# ==========================================
+# 14. WEB SERVER (Anti-Sleep)
+# ==========================================
+async def handle_ping(request):
+    return web.Response(text="Esports Bot Engine Running 100%")
+
+def run_background_services():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    app = web.Application()
+    app.router.add_get('/', handle_ping)
+    runner = web.AppRunner(app)
+    loop.run_until_complete(runner.setup())
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    loop.run_until_complete(site.start())
+    
+    loop.run_until_complete(start_all_workers())
+    loop.run_forever()
+
+# ==========================================
+# 15. MAIN BOOT SEQUENCE
+# ==========================================
+def main():
+    bg_thread = threading.Thread(target=run_background_services, daemon=True)
+    bg_thread.start()
+    
+    app = Application.builder().token(BOT_TOKEN).build()
+    
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(handle_inline_menu, pattern="^menu_")
+        ],
+        states={
+            WAIT_IGN: [MessageHandler(filters.ALL, save_ign_flow)],
+            WAIT_ADD_AMT: [MessageHandler(filters.ALL, enter_amount)],
+            WAIT_PAY_PROOF: [MessageHandler(filters.ALL, process_payment_proof)],
+            WAIT_WITHDRAW_QR: [MessageHandler(filters.ALL, process_withdraw_qr)],
+            WAIT_WIN_PROOF: [MessageHandler(filters.ALL, process_win_proof)],
+            WAIT_WORKER_OTP: [MessageHandler(filters.TEXT, worker_otp_recv)],
+            WAIT_WORKER_PASS: [MessageHandler(filters.TEXT, worker_pass_recv)]
+        },
+        fallbacks=[
+            CommandHandler("start", start),
+            CallbackQueryHandler(cancel_action, pattern="^menu_main$")
+        ]
+    )
+    
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("join", join_channel_cmd))
+    app.add_handler(CommandHandler("hype", admin_hype_cmd))
+    app.add_handler(CommandHandler("status", admin_status_cmd))
+    app.add_handler(CommandHandler("add_worker", add_worker_cmd))
+    
+    app.add_handler(CallbackQueryHandler(legal_callback, pattern="^legal_"))
+    app.add_handler(CallbackQueryHandler(conf_join, pattern="^confjoin_"))
+    app.add_handler(CallbackQueryHandler(do_join, pattern="^dojoin_"))
+    app.add_handler(CallbackQueryHandler(ask_refund, pattern="^askref_"))
+    app.add_handler(CallbackQueryHandler(do_refund, pattern="^doref_"))
+    app.add_handler(CallbackQueryHandler(cancel_inline, pattern="^delete_msg$"))
+    app.add_handler(CallbackQueryHandler(admin_btns, pattern="^adm"))
+    app.add_handler(conv_handler)
+    
+    logger.info("🔥 Arena Platform is Live!")
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
