@@ -1,9 +1,0 @@
-python-telegram-bot==20.7
-pyrogram==2.0.10
-tgcrypto==1.2.5
-gotrue==2.8.1
-supabase==2.3.4
-requests==2.31.0
-pytz==2023.3
-aiohttp==3.9.1
-reportlab==4.0.9
